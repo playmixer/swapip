@@ -1,8 +1,10 @@
 package swapip
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,15 +24,17 @@ import (
 )
 
 type SwapIP struct {
-	log    *logger.Logger
-	cfg    Config
-	server *http.Server
+	log      *logger.Logger
+	cfg      Config
+	server   *http.Server
+	authUser map[string]string
 }
 
 func New(ctx context.Context, cfg Config, log *logger.Logger) *SwapIP {
 	s := &SwapIP{
-		log: log,
-		cfg: cfg,
+		log:      log,
+		cfg:      cfg,
+		authUser: map[string]string{},
 	}
 
 	return s
@@ -92,6 +96,7 @@ func (s *SwapIP) sendIPToRemote(ip string) error {
 		return fmt.Errorf("failed create request: %w", err)
 	}
 	r.Header.Add("Content-Type", "application/json")
+	r.Header.Add("Authorization", "Basic "+s.cfg.AuthBasic)
 
 	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
@@ -147,9 +152,16 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 		IP string `json:"ip"`
 	}
 	handler := func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+		if !ok || !s.verifyUserPass(username, password) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="api"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		s.log.Info("info",
 			zap.String("remote", r.RemoteAddr),
 			zap.String("method", r.Method),
+			zap.String("user", username),
 		)
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -202,6 +214,11 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 		fmt.Fprintf(w, "{\"status\": true}")
 	}
 
+	err := s.uploadAuthUser()
+	if err != nil {
+		return fmt.Errorf("failed upload auth users: %w", err)
+	}
+
 	s.server = &http.Server{
 		BaseContext:  func(net.Listener) context.Context { return ctx },
 		Addr:         s.cfg.Address,
@@ -210,7 +227,7 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	err := s.server.ListenAndServe()
+	err = s.server.ListenAndServe()
 	if err != nil {
 		return fmt.Errorf("failed listen and serve: %w", err)
 	}
@@ -220,6 +237,36 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 
 func (s *SwapIP) ShutdownServer(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
+}
+
+func (s *SwapIP) uploadAuthUser() error {
+	f, err := os.Open("./user.data")
+	if err != nil {
+		return fmt.Errorf("failed open user file: %w", err)
+	}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		text := scanner.Text()
+		b, err := base64.StdEncoding.DecodeString(text)
+		if err != nil {
+			return fmt.Errorf("failed read user file: %w", err)
+		}
+		split := strings.Split(string(b), ":")
+		if len(split) < 2 {
+			return fmt.Errorf("failed user data")
+		}
+
+		s.authUser[split[0]] = split[1]
+	}
+	return nil
+}
+
+func (s *SwapIP) verifyUserPass(username, password string) bool {
+	if v, ok := s.authUser[username]; ok && v == password {
+		return true
+	}
+
+	return false
 }
 
 func (s *SwapIP) execScript() error {

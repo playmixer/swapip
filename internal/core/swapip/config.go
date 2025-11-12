@@ -10,6 +10,7 @@ type Config struct {
 	Address        string     `env:"RECEPIENT_ADDRESS" envDefault:":8080"`
 	NginxConfFiles stringList `env:"RECEPIENT_NGINX_CONF"`
 	Script         string     `env:"RECEPIENT_SCRIPT"`
+	AuthBasic      string     `env:"SENDER_BASIC_AUTH"`
 }
 
 func (s stringList) Strings() []string {
