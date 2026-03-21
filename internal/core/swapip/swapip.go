@@ -284,7 +284,11 @@ func (s *SwapIP) execScript() error {
 }
 
 func (s *SwapIP) rewriteAddress(newIP string) error {
-	list := s.cfg.NginxConfFiles.Strings()
+	list, err := s.cfg.NginxConfFiles.ReadFiles()
+	if err != nil {
+		return fmt.Errorf("failed to read nginx config list: %w", err)
+	}
+	s.log.Info("list update", zap.Any("files", list))
 	var errlist error
 	ip, err := s.GetIPFromStore()
 	if err != nil {
