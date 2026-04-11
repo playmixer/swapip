@@ -47,6 +47,32 @@ go build -o build/recepient ./cmd/recepient
 
 Либо цели в [Makefile](Makefile): `make build-w` (Windows 386), `make build-l` (linux/amd64).
 
+### Версионирование
+
+Бинарники поддерживают версионирование через `-ldflags`. При сборке через Makefile автоматически подставляются:
+- **Версия** (из ближайшего Git-тега, иначе "0.0.0")
+- **Коммит** (короткий хэш Git)
+- **Время сборки** (в формате UTC)
+
+Для отображения версии используйте флаг `--version` или `-v`:
+
+```bash
+./build/sender --version
+# version 1.0.0 (commit: abc123, built: 2024-01-01T12:00:00Z, go: go1.25.0)
+
+./build/recepient --version
+# version 1.0.0 (commit: abc123, built: 2024-01-01T12:00:00Z, go: go1.25.0)
+```
+
+При запуске сервисы логируют свою версию (уровень INFO).
+
+Ручная сборка с версионированием:
+
+```bash
+VERSION=1.2.3 COMMIT=$(git rev-parse --short HEAD) BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+  go build -ldflags="-X 'swapip/internal/version.Version=$VERSION' -X 'swapip/internal/version.Commit=$COMMIT' -X 'swapip/internal/version.Date=$BUILD_TIME'" -o sender ./cmd/sender
+```
+
 ## Конфигурация
 
 Переменные задаются в окружении; при наличии файла `.env` он подхватывается автоматически.

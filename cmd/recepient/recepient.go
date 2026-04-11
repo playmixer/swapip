@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"swapip/internal/adapters/logger"
 	"swapip/internal/core/config"
 	"swapip/internal/core/swapip"
+	"swapip/internal/version"
 	"syscall"
 	"time"
 
@@ -17,6 +19,12 @@ import (
 )
 
 func main() {
+	// Проверка флага --version
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println(version.String())
+		return
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer cancel()
 	cfg, err := config.Init()
@@ -32,7 +40,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	lgr.Info("Starting ...")
+
+	// Логирование версии при запуске
+	lgr.Info("Starting swapip recipient", zap.String("version", version.String()))
 
 	swap := swapip.New(ctx, cfg.SwapConfig, lgr)
 	go func() {
