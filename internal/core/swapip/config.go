@@ -4,17 +4,20 @@ import (
 	"bufio"
 	"os"
 	"strings"
+	"time"
 )
 
 type stringList string
 
 type Config struct {
-	RemoteAddres   string     `env:"SENDER_REMOTE_ADDRESS"`
-	FileIP         string     `env:"STORAGE_IP" envDefault:"ip.data"`
-	Address        string     `env:"RECEPIENT_ADDRESS" envDefault:":8080"`
-	NginxConfFiles stringList `env:"RECEPIENT_NGINX_CONF"` // путь к файлу со списком конфигурационных файлов nginx (каждый путь на новой строке)
-	Script         string     `env:"RECEPIENT_SCRIPT"`
-	AuthBasic      string     `env:"SENDER_BASIC_AUTH"`
+	RemoteAddress    string        `env:"SENDER_REMOTE_ADDRESS"`
+	FileIP           string        `env:"STORAGE_IP" envDefault:"ip.data"`
+	Address          string        `env:"RECEPIENT_ADDRESS" envDefault:":8080"`
+	NginxConfFiles   stringList    `env:"RECEPIENT_NGINX_CONF"` // путь к файлу со списком конфигурационных файлов nginx (каждый путь на новой строке)
+	Script           string        `env:"RECEPIENT_SCRIPT"`
+	AuthBasic        string        `env:"SENDER_BASIC_AUTH"`
+	UserDataFile     string        `env:"RECEPIENT_USER_DATA" envDefault:"./user.data"`
+	HTTPClientTimeout time.Duration `env:"HTTP_CLIENT_TIMEOUT" envDefault:"30s"`
 }
 
 // ReadFiles читает файл, путь которого содержится в stringList,

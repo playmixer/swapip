@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/netip"
 	"regexp"
+	"time"
 )
 
 var (
-	base string = "http://2ip.ru"
+	base          = "http://2ip.ru"
+	ipv4LineRegex = regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`)
 )
 
 type IP struct {
@@ -17,10 +19,15 @@ type IP struct {
 }
 
 type TwoIP struct {
+	client *http.Client
 }
 
-func New() *TwoIP {
-	return &TwoIP{}
+// New создаёт клиент для запроса внешнего IP. Если client == nil, используется клиент с таймаутом 30 с.
+func New(client *http.Client) *TwoIP {
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	return &TwoIP{client: client}
 }
 
 func (t *TwoIP) GetIP() (*IP, error) {
@@ -31,11 +38,16 @@ func (t *TwoIP) GetIP() (*IP, error) {
 	r.Header.Add("Content-Type", "text/plain")
 	r.Header.Add("User-Agent", "curl/1")
 
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := t.client.Do(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting response: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, fmt.Errorf("unexpected status: %s", resp.Status)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -59,7 +71,5 @@ func (ip *IP) String() string {
 }
 
 func CleanIP(ip string) string {
-	pattern := regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`)
-	ip = pattern.FindString(ip)
-	return ip
+	return ipv4LineRegex.FindString(ip)
 }

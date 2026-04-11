@@ -34,6 +34,10 @@ func Init() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed parse environments: %w", err)
 	}
+	err = env.Parse(&cfg.SwapConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed parse swapip config: %w", err)
+	}
 
 	return cfg, nil
 }

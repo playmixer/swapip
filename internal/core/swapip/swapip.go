@@ -23,25 +23,33 @@ import (
 	"go.uber.org/zap"
 )
 
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
 type SwapIP struct {
-	log      *logger.Logger
-	cfg      Config
-	server   *http.Server
-	authUser map[string]string
+	log        *logger.Logger
+	cfg        Config
+	server     *http.Server
+	authUser   map[string]string
+	httpClient *http.Client
 }
 
 func New(ctx context.Context, cfg Config, log *logger.Logger) *SwapIP {
+	timeout := cfg.HTTPClientTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	s := &SwapIP{
-		log:      log,
-		cfg:      cfg,
-		authUser: map[string]string{},
+		log:        log,
+		cfg:        cfg,
+		authUser:   map[string]string{},
+		httpClient: &http.Client{Timeout: timeout},
 	}
 
 	return s
 }
 
 func (s *SwapIP) Send() error {
-	ipapp := twoip.New()
+	ipapp := twoip.New(s.httpClient)
 	ip, err := ipapp.GetIP()
 	if err != nil {
 		s.log.Error("failed getting remote address", zap.Error(err))
@@ -54,7 +62,7 @@ func (s *SwapIP) Send() error {
 	ipStore, err := s.GetIPFromStore()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("failed proccess: %w", err)
+			return fmt.Errorf("failed process: %w", err)
 		}
 	}
 	// если ip не было в хранилище
@@ -91,20 +99,26 @@ func (s *SwapIP) sendIPToRemote(ip string) error {
 		return fmt.Errorf("failed marshal body: %w", err)
 	}
 
-	r, err := http.NewRequest(http.MethodPost, s.cfg.RemoteAddres, bytes.NewBuffer(bBody))
+	r, err := http.NewRequest(http.MethodPost, s.cfg.RemoteAddress, bytes.NewBuffer(bBody))
 	if err != nil {
 		return fmt.Errorf("failed create request: %w", err)
 	}
 	r.Header.Add("Content-Type", "application/json")
 	r.Header.Add("Authorization", "Basic "+s.cfg.AuthBasic)
 
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := s.httpClient.Do(r)
 	if err != nil {
 		return fmt.Errorf("failed getting response: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("response status not OK")
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("response status not OK: %s: %s", resp.Status, string(b))
+	}
+	_, err = io.Copy(io.Discard, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed drain response body: %w", err)
 	}
 
 	return nil
@@ -119,13 +133,17 @@ func (s *SwapIP) GetIPFromStore() (*netip.Addr, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed create file ip store: %w", err)
 	}
+	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("failed read from ip store: %w", err)
 	}
 	ip := twoip.CleanIP(string(data))
-	addr := netip.MustParseAddr(ip)
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ip in store: %w", err)
+	}
 
 	return &addr, nil
 }
@@ -135,6 +153,7 @@ func (s *SwapIP) StoreIP(ip string) error {
 	if err != nil {
 		return fmt.Errorf("failed create file: %w", err)
 	}
+	defer f.Close()
 
 	_, err = f.Write([]byte(ip))
 	if err != nil {
@@ -167,13 +186,14 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		body, err := io.ReadAll(r.Body)
+		lr := http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		defer lr.Close()
+		body, err := io.ReadAll(lr)
 		if err != nil {
 			s.log.Error("failed read body", zap.Error(err))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
 		jBody := bodyResponse{}
 		err = json.Unmarshal(body, &jBody)
 		if err != nil {
@@ -181,7 +201,7 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		s.log.Info("info", zap.Any("body", jBody))
+		s.log.Info("accepted ip", zap.String("ip", jBody.IP))
 
 		//обновляем конфиг
 		err = s.rewriteAddress(jBody.IP)
@@ -236,14 +256,18 @@ func (s *SwapIP) RunServer(ctx context.Context) error {
 }
 
 func (s *SwapIP) ShutdownServer(ctx context.Context) error {
+	if s.server == nil {
+		return nil
+	}
 	return s.server.Shutdown(ctx)
 }
 
 func (s *SwapIP) uploadAuthUser() error {
-	f, err := os.Open("./user.data")
+	f, err := os.Open(s.cfg.UserDataFile)
 	if err != nil {
 		return fmt.Errorf("failed open user file: %w", err)
 	}
+	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		text := scanner.Text()
@@ -257,6 +281,9 @@ func (s *SwapIP) uploadAuthUser() error {
 		}
 
 		s.authUser[split[0]] = split[1]
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed read user file: %w", err)
 	}
 	return nil
 }
@@ -301,13 +328,13 @@ func (s *SwapIP) rewriteAddress(newIP string) error {
 				errlist = errors.Join(errlist, fmt.Errorf("failed open file `%s`: %w", l, err))
 				return
 			}
+			defer f.Close()
 
 			b, err := io.ReadAll(f)
 			if err != nil {
 				errlist = errors.Join(errlist, fmt.Errorf("failed read file `%s`: %w", l, err))
 				return
 			}
-			f.Close()
 
 			text := string(b)
 			text = strings.ReplaceAll(text, ip.String(), newIP)

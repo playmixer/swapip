@@ -10,8 +10,11 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+)
 
-	"github.com/playmixer/secret-keeper/pkg/tools"
+const (
+	logDirPerm  = 0o750
+	logFilePerm = 0o600
 )
 
 type Logger struct {
@@ -73,7 +76,7 @@ func New(ctx context.Context, options ...option) (*Logger, error) {
 	}
 
 	if cfg.logPath != "" {
-		err := os.MkdirAll(filepath.Dir(cfg.logPath), tools.Mode0750)
+		err := os.MkdirAll(filepath.Dir(cfg.logPath), logDirPerm)
 		if err != nil {
 			log.Println("failed create directory for logs")
 		}
@@ -107,7 +110,7 @@ func prepareCore(cfg loggerConfigurator) *zap.Logger {
 	if cfg.isRotateFile {
 		cfg.logPath = "./logs/log_" + time.Now().Format(cfg.prefix) + ".log"
 	}
-	f, err := os.OpenFile(cfg.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, tools.Mode0600)
+	f, err := os.OpenFile(cfg.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, logFilePerm)
 	if err != nil {
 		panic(fmt.Errorf("failed create log file: %w", err))
 	}
@@ -128,15 +131,15 @@ func prepareCore(cfg loggerConfigurator) *zap.Logger {
 	consoleEncoder := zapcore.NewConsoleEncoder(developmentCfg)
 	fileEncoder := zapcore.NewJSONEncoder(productionCfg)
 
-	ouputs := []zapcore.Core{}
+	outputs := []zapcore.Core{}
 	if cfg.isFile {
-		ouputs = append(ouputs, zapcore.NewCore(fileEncoder, file, level))
+		outputs = append(outputs, zapcore.NewCore(fileEncoder, file, level))
 	}
 	if cfg.isTerminal {
-		ouputs = append(ouputs, zapcore.NewCore(consoleEncoder, stdout, level))
+		outputs = append(outputs, zapcore.NewCore(consoleEncoder, stdout, level))
 	}
 
-	core := zapcore.NewTee(ouputs...)
+	core := zapcore.NewTee(outputs...)
 	return zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 }
 

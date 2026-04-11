@@ -42,7 +42,9 @@ func main() {
 	}()
 	<-ctx.Done()
 	lgr.Info("Stopping ...")
-	err = swap.ShutdownServer(ctx)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	err = swap.ShutdownServer(shutdownCtx)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		lgr.Error("server shutdown failed", zap.Error(err))
 	}
