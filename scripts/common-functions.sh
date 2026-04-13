@@ -243,7 +243,7 @@ create_backup() {
     mkdir -p "$BACKUP_DIR"
     
     # Архивируем
-    if tar -czf "$backup_path" -C "$INSTALL_DIR/$component" . 2>/dev/null; then
+    if tar -czf "$backup_path" -C "$INSTALL_DIR" "$component" 2>/dev/null; then
         log_success "Резервная копия создана: $backup_path"
         echo "$backup_path"
     else
