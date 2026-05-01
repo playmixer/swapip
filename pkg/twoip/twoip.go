@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	base          = "http://2ip.ru"
+	base          = "https://2ip.ru"
 	ipv4LineRegex = regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`)
 )
 
