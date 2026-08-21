@@ -90,6 +90,7 @@ VERSION=1.2.3 COMMIT=$(git rev-parse --short HEAD) BUILD_TIME=$(date -u +"%Y-%m-
 | Переменная | Описание |
 |------------|----------|
 | `SENDER_REMOTE_ADDRESS` | Полный URL получателя, например `http://example.com:8080/`. |
+| `SENDER_TWOIP_BASE` | Базовый URL сервиса определения внешнего IP. По умолчанию `https://2ip.ru`. |
 | `SENDER_BASIC_AUTH` | Заголовок в формате Basic: строка после префикса `Basic ` (как в `Authorization`). |
 | `STORAGE_IP` | Путь к локальному файлу с последним отправленным IP. По умолчанию `ip.data`. |
 

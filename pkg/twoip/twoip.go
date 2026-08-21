@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	base          = "https://2ip.ru"
 	ipv4LineRegex = regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`)
 )
 
@@ -20,18 +19,20 @@ type IP struct {
 
 type TwoIP struct {
 	client *http.Client
+	base   string
 }
 
 // New создаёт клиент для запроса внешнего IP. Если client == nil, используется клиент с таймаутом 30 с.
-func New(client *http.Client) *TwoIP {
+// Если baseURL пуст, используется адрес по умолчанию https://2ip.ru.
+func New(client *http.Client, baseURL string) *TwoIP {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	return &TwoIP{client: client}
+	return &TwoIP{client: client, base: baseURL}
 }
 
 func (t *TwoIP) GetIP() (*IP, error) {
-	r, err := http.NewRequest(http.MethodGet, base, nil)
+	r, err := http.NewRequest(http.MethodGet, t.base, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed create request: %w", err)
 	}

@@ -49,7 +49,7 @@ func New(ctx context.Context, cfg Config, log *logger.Logger) *SwapIP {
 }
 
 func (s *SwapIP) Send() error {
-	ipapp := twoip.New(s.httpClient)
+	ipapp := twoip.New(s.httpClient, s.cfg.TwoIPBase)
 	ip, err := ipapp.GetIP()
 	if err != nil {
 		s.log.Error("failed getting remote address", zap.Error(err))
